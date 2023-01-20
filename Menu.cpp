@@ -14,8 +14,9 @@
 
 #include "OnlineSubsystem.h"
 
-void UMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch)
+void UMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch, FString LobbyPath)
 {
+	PathToLobby = FString::Printf(TEXT("%s?listen"), *LobbyPath);
 	NumPublicConnections = NumberOfPublicConnections;
 	MatchType = TypeOfMatch;
 	AddToViewport();
@@ -40,23 +41,22 @@ void UMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch)
 	UGameInstance* GameInstance = GetGameInstance();
 	if (GameInstance)
 	{
-		MultiplayerSessionsSubsystem =  GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>();
+		MultiplayerSessionsSubsystem = GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>();
 	}
 	if (MultiplayerSessionsSubsystem)
 	{
 		MultiplayerSessionsSubsystem->MultiplayerOnCreateSessionComplete.AddDynamic(this, &ThisClass::OnCreateSession);
 		MultiplayerSessionsSubsystem->MultiplayerOnFindSessionsComplete.AddUObject(this, &ThisClass::OnFindSessions);
 		MultiplayerSessionsSubsystem->MultiplayerOnJoinSessionComplete.AddUObject(this, &ThisClass::OnJoinSession);
-		MultiplayerSessionsSubsystem->MultiplayerOnDestroySessionComplete.AddDynamic(this, &ThisClass::OnDestroySession);
+		MultiplayerSessionsSubsystem->MultiplayerOnDestroySessionComplete.
+		                              AddDynamic(this, &ThisClass::OnDestroySession);
 		MultiplayerSessionsSubsystem->MultiplayerOnStartSessionComplete.AddDynamic(this, &ThisClass::OnStartSession);
-
-
 	}
 }
 
 bool UMenu::Initialize()
 {
-	if(!Super::Initialize())
+	if (!Super::Initialize())
 	{
 		return false;
 	}
@@ -69,15 +69,13 @@ bool UMenu::Initialize()
 	{
 		JoinButton->OnClicked.AddDynamic(this, &UMenu::JoinButtonClicked);
 	}
-	return true	;
+	return true;
 }
 
 void UMenu::NativeDestruct()
 {
-	 MenuTearDown();
+	MenuTearDown();
 	Super::NativeDestruct();
-
-
 }
 
 void UMenu::OnCreateSession(bool bWasSuccessful)
@@ -91,16 +89,16 @@ void UMenu::OnCreateSession(bool bWasSuccessful)
 		UWorld* World = GetWorld();
 		if (World)
 		{
-			World->ServerTravel("/Game/ThirdPerson/Maps/Lobby?listen");
-
+			World->ServerTravel(PathToLobby);
 		}
 	}
-	else 
+	else
 	{
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Red, FString("Session could not be created!!!"));
 		}
+		HostButton->SetIsEnabled(true);
 	}
 }
 
@@ -108,7 +106,6 @@ void UMenu::OnFindSessions(const TArray<FOnlineSessionSearchResult>& SessionResu
 {
 	if (MultiplayerSessionsSubsystem == nullptr)
 	{
-		
 		return;
 	}
 	for (auto Result : SessionResults)
@@ -121,6 +118,10 @@ void UMenu::OnFindSessions(const TArray<FOnlineSessionSearchResult>& SessionResu
 			return;
 		}
 	}
+	if (!bWasSuccessful || SessionResults.Num()==0)
+	{
+		JoinButton->SetIsEnabled(true);
+	}
 }
 
 void UMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result)
@@ -132,7 +133,7 @@ void UMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result)
 		if (SessionInterface.IsValid())
 		{
 			FString Address;
-			SessionInterface->GetResolvedConnectString(NAME_GameSession , Address);
+			SessionInterface->GetResolvedConnectString(NAME_GameSession, Address);
 			APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
 			if (PlayerController)
 			{
@@ -141,8 +142,15 @@ void UMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result)
 			}
 		}
 	}
+	if (Result!= EOnJoinSessionCompleteResult::Success)
+	{
+		JoinButton->SetIsEnabled(true);
+		
+		GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Green, FString("REVERTING"));
+		
+	}
+	
 }
-
 
 
 void UMenu::OnDestroySession(bool bWasSuccessful)
@@ -155,23 +163,18 @@ void UMenu::OnStartSession(bool bWasSuccessful)
 
 void UMenu::HostButtonClicked()
 {
-	
+	HostButton->SetIsEnabled(false);
 
 	if (MultiplayerSessionsSubsystem)
 	{
 		//GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Red, FString("CREATING SESSION FROM CLICK"));
 		MultiplayerSessionsSubsystem->CreateSession(NumPublicConnections, MatchType);
-		
 	}
-
-	
-
-	
 }
 
 void UMenu::JoinButtonClicked()
 {
-
+	JoinButton->SetIsEnabled(false);
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Red, FString("JoinButtonClicked"));
@@ -199,8 +202,6 @@ void UMenu::MenuTearDown()
 			FInputModeGameOnly InputModeData;
 			PlayerController->SetInputMode(InputModeData);
 			PlayerController->SetShowMouseCursor(false);
-
 		}
-
 	}
 }
